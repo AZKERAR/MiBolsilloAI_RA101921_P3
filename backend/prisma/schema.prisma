@@ -1,0 +1,123 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ===== Enums =====
+enum UserStatus {
+  pending_email
+  active
+  locked
+  disabled
+}
+
+enum AccountType {
+  cash
+  bank
+  credit_card
+  wallet
+  investment
+  other
+}
+
+enum TxnDirection {
+  inflow
+  outflow
+}
+
+// ===== Tablas =====
+model Role {
+  id    String @id @default(uuid())
+  code  String @unique
+  name  String
+  users User[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model User {
+  id           String     @id @default(uuid())
+  email        String     @unique
+  passwordHash String?
+  status       UserStatus @default(pending_email)
+  roleId       String
+  role         Role       @relation(fields: [roleId], references: [id])
+
+  accounts     Account[]
+  otps         EmailOtpToken[]
+  categories   Category[] // ← back-relation para Category.user
+  transactions Transaction[] // ← back-relation para Transaction.user
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model EmailOtpToken {
+  id        String    @id @default(uuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  purpose   String // 'register' | 'password_reset' | 'login'
+  otpHash   String
+  expiresAt DateTime
+  usedAt    DateTime?
+
+  createdAt DateTime @default(now())
+}
+
+model Account {
+  id       String      @id @default(uuid())
+  userId   String
+  user     User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name     String
+  type     AccountType
+  currency String      @default("USD")
+
+  transactions Transaction[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Category {
+  id     String  @id @default(uuid())
+  userId String
+  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name   String
+  icon   String?
+  color  String?
+
+  transactions Transaction[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Transaction {
+  id     String @id @default(uuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  accountId String
+  account   Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  categoryId String?
+  category   Category? @relation(fields: [categoryId], references: [id])
+
+  direction  TxnDirection
+  amount     Decimal      @db.Decimal(14, 2) // ← Decimal para Postgres
+  currency   String       @default("USD")
+  occurredAt DateTime
+  note       String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, occurredAt])
+  @@index([accountId])
+  @@index([categoryId])
+}
